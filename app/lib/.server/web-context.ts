@@ -109,6 +109,45 @@ function parseDuckDuckGoHtml(html: string): WebSearchResult[] {
   return results;
 }
 
+function parseBingHtml(html: string): WebSearchResult[] {
+  const results: WebSearchResult[] = [];
+  const blocks = html.split(/<li[^>]+class="[^"]*\bb_algo\b/i).slice(1);
+
+  for (const block of blocks) {
+    const link = block.match(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+
+    if (!link) {
+      continue;
+    }
+
+    let url = resolveDuckDuckGoLink(link[1]);
+
+    try {
+      const parsed = new URL(url);
+      const encodedDestination = parsed.searchParams.get('u');
+
+      if (parsed.hostname.endsWith('bing.com') && encodedDestination?.startsWith('a1')) {
+        url = atob(encodedDestination.slice(2));
+      }
+    } catch {
+      continue;
+    }
+
+    if (!isAllowedUrl(url)) {
+      continue;
+    }
+
+    const snippet = block.match(/<p[^>]*class="[^"]*\bb_lineclamp\w*\b[^"]*"[^>]*>([\s\S]*?)<\/p>/i);
+    results.push({
+      title: stripHtml(link[2]),
+      url,
+      snippet: snippet ? stripHtml(snippet[1]) : '',
+    });
+  }
+
+  return results;
+}
+
 export class WebContextError extends Error {
   constructor(
     message: string,
@@ -195,19 +234,49 @@ export async function searchWeb(options: { request: Request; cloudflareEnv?: Rec
     signal: AbortSignal.timeout(10_000),
   });
 
-  const results = response.ok ? parseDuckDuckGoHtml(await response.text()) : [];
+  const duckDuckGoResults = response.status === 200 ? parseDuckDuckGoHtml(await response.text()) : [];
 
-  if (results.length === 0 && response.status !== 200) {
+  if (duckDuckGoResults.length > 0) {
+    return {
+      query: options.query,
+      provider: 'duckduckgo' as const,
+      results: duckDuckGoResults.slice(0, MAX_SEARCH_RESULTS).map((result) => ({
+        ...result,
+        title: result.title || result.url,
+        snippet: trimContent(result.snippet, 500),
+      })),
+    };
+  }
+
+  /*
+   * DuckDuckGo can return HTTP 202 challenge pages during rate limiting. Use
+   * Bing's public HTML results as a keyless fallback in that case.
+   */
+  const bingUrl = new URL('https://www.bing.com/search');
+  bingUrl.searchParams.set('q', options.query);
+
+  const bingResponse = await fetch(bingUrl, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      Accept: 'text/html',
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  const bingResults = bingResponse.ok ? parseBingHtml(await bingResponse.text()) : [];
+
+  if (bingResults.length === 0) {
     throw new WebContextError(
-      'DuckDuckGo blocked the search request. Add a Tavily API key for reliable web search.',
+      'Free web search is temporarily unavailable. Try again or configure a Tavily API key.',
       502,
     );
   }
 
   return {
     query: options.query,
-    provider: 'duckduckgo' as const,
-    results: results.slice(0, MAX_SEARCH_RESULTS).map((result) => ({
+    provider: 'bing' as const,
+    results: bingResults.slice(0, MAX_SEARCH_RESULTS).map((result) => ({
       ...result,
       title: result.title || result.url,
       snippet: trimContent(result.snippet, 500),

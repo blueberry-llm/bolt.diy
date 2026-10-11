@@ -23,7 +23,7 @@ type WebContextData = {
 
 type SearchResultsData = {
   query: string;
-  provider: 'tavily' | 'duckduckgo';
+  provider: 'tavily' | 'duckduckgo' | 'bing';
   results: Array<{ title: string; url: string; snippet: string }>;
 };
 
