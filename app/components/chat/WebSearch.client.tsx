@@ -370,7 +370,7 @@ export function WebSearch({ onSearchResult, provider, model, disabled = false }:
                     setSelectedUrls(new Set());
                   }}
                   disabled={isSearching}
-                  className="flex-1 rounded-md border border-bolt-elements-borderColor px-3 py-2 text-sm text-bolt-elements-textPrimary"
+                  className="flex-1 rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 px-3 py-2 text-sm font-medium text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:cursor-not-allowed disabled:bg-bolt-elements-background-depth-1 disabled:text-bolt-elements-textSecondary disabled:opacity-100"
                 >
                   Back
                 </button>
